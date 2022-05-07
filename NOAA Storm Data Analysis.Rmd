@@ -1,0 +1,169 @@
+---
+title: "NOAA Storm Data Analysis"
+author: "cha"
+date: "05/06/2022"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+#Synopsis
+This analysis identifies the most harmful types of events for population health in the US (meaning fatalities and injuries)
+ as well as the events with the greatest economic consequences (in USD). The analysis is based on the NOAA storm database. 
+
+1. Most harmful types of events for population health in the US 
+2. Events with the greatest economic consequences across the US
+
+The documentation of database can be accessed here:https://d396qusza40orc.cloudfront.net/repdata%2Fpeer2_doc%2Fpd01016005curr.pdf
+
+#Data Processing
+    ```{r}
+#load packages for data analysis
+library(magrittr)
+library(dplyr)
+library(ggplot2)
+library(tidyverse)
+#read data
+data <- read.csv("repdata_data_StormData.csv.bz2")
+#summary(data$EVTYPE)
+#table(data$EVTYPE)
+#inspect data:
+head(data)
+#table(data$EVTYPE,data$INJURIES)
+#Note: Fatalities and injuries are split into two columns for direct and indirect fatality/injury
+
+#clean data
+#combine event that are listed multiple times, different spelling
+data$EVTYPE <- as.character(data$EVTYPE)
+data$EVTYPE[grepl("/|&|and", data$EVTYPE,ignore.case = TRUE)] <- "Multiple Event"
+data$EVTYPE[grepl("volc", data$EVTYPE,ignore.case = TRUE)] <- "Volcano"
+data$EVTYPE[grepl("wind|wnd", data$EVTYPE,ignore.case = TRUE)] <- "WIND"
+data$EVTYPE[grepl("FLOOD", data$EVTYPE,ignore.case = TRUE)] <- "FLOOD"
+data$EVTYPE[grepl("storm", data$EVTYPE,ignore.case = TRUE)] <- "STORM"
+data$EVTYPE[grepl("hail", data$EVTYPE,ignore.case = TRUE)] <- "HAIL"
+data$EVTYPE[grepl("fire", data$EVTYPE,ignore.case = TRUE)] <- "FIRE"
+data$EVTYPE[grepl("heat", data$EVTYPE,ignore.case = TRUE)] <- "HEAT"
+data$EVTYPE[grepl("tornado", data$EVTYPE,ignore.case = TRUE)] <- "TORNADO"
+data$EVTYPE[grepl("drought", data$EVTYPE,ignore.case = TRUE)] <- "DROUGHT"
+
+
+#Summarise required data into one variable
+#8 - eventtype
+#23 - fatalities
+#24 - injuries
+healthdata <- data[,(c(8,23:24))]
+head(healthdata)
+
+h<-healthdata %>% 
+  group_by(EVTYPE) %>%
+  summarize(sum_fatalities = sum(FATALITIES), 
+            sum_injuries = sum(INJURIES))
+#sort by sum_fatalities 
+h_ar <- arrange(h,sum_fatalities)
+tail(h_ar)
+#Result is Tornado
+
+#sort by sum_injuries 
+h_inj <- arrange(h,sum_injuries)
+tail(h_inj)
+#Result is Tornados 
+
+#arrange data
+a<-arrange(h_inj, desc(sum_fatalities), by_group = TRUE)
+#find the 10 highest values first for damage crops
+#eco <- aggregate(sum_damage ~ e$EVTYPE, e, sum) [order(e$sum_damage),]
+h_inju<-a[1:20,]
+h_inju
+
+#Plot
+plot1 <- ggplot(data=h_inju, aes(x=EVTYPE))+
+  geom_boxplot(aes(y=sum_fatalities), colour="red")+
+  geom_boxplot(aes(y=sum_injuries), colour="blue")+
+  theme(axis.text.x = element_text(angle = 90, hjust = 1))
+
+
+#Most harmful types of events for population health in the US (EVTYPE variable)
+#Answer is Tornados 
+
+###PART2
+#2. Events with the greatest economic consequences across the US
+#For this question, "damage" needs to be assesed. 
+#Propdmg - property damage 
+#Alphabetical characters used to signify magnitude include “K” for thousands, “M” for millions, and “B” for billions
+
+#PROPERTY DAMAGE
+head(data$PROPDMG)
+tail(data$PROPDMGEXP)
+#K=1000, M= 1000000, B=1000000000
+data$PROPDMGEXP[data$PROPDMGEXP=="K"]<- 1000
+data$PROPDMGEXP[data$PROPDMGEXP=="M"]<- 1000000
+data$PROPDMGEXP[data$PROPDMGEXP=="m"]<- 1000000
+data$PROPDMGEXP[data$PROPDMGEXP=="B"]<- 1000000000
+#change from character to numeric
+data$PROPDMGEXP <- as.numeric(data$PROPDMGEXP)
+#multiply prop damage times prop damage xp (K,M,B)
+data$damage<-data$PROPDMG*data$PROPDMGEXP
+
+#CROP DAMAGE
+#K=1000, M= 1000000, B=1000000000
+data$CROPDMGEXP[data$CROPDMGEXP=="K"]<- 1000
+data$CROPDMGEXP[data$CROPDMGEXP=="M"]<- 1000000
+data$CROPDMGEXP[data$CROPDMGEXP=="m"]<- 1000000
+data$CROPDMGEXP[data$CROPDMGEXP=="B"]<- 1000000000
+#change from character to numeric
+data$CROPDMGEXP <- as.numeric(data$CROPDMGEXP)
+#multiply prop damage times prop damage xp (K,M,B)
+data$damagecrop<-data$CROPDMG*data$CROPDMGEXP
+
+#select eventtype variable and cost of damage variable for property and crops 
+economicdata <- data[,(c(8,38,39))]
+
+#summarise 
+xx<-economicdata %>% 
+ group_by(EVTYPE) %>%  
+  summarise(damagecrop, damage, na.rm=TRUE)
+xx
+
+#variable for property damage
+#arrange data by max value for damage property 
+x<-arrange(xx, desc(damage), by_group = FALSE)
+#find the 10 highest values first for damage property
+#eco <- aggregate(sum_damage ~ e$EVTYPE, e, sum) [order(e$sum_damage),]
+ecop<-x[1:20,]
+ecop
+
+#variable for crop damage
+#arrange data by max value for damage crops
+y<-arrange(xx, desc(damagecrop), by_group = TRUE)
+#find the 10 highest values first for damage crops
+#eco <- aggregate(sum_damage ~ e$EVTYPE, e, sum) [order(e$sum_damage),]
+ecoc<-y[1:20,]
+ecoc
+
+#Plot2 damage property by event type 
+plot2 <- ggplot(data=ecop, aes(x=EVTYPE, y=(damage/1000000000)))+
+  geom_line(colour="blue")+
+  theme(axis.text.x = element_text(angle = 90, hjust = 1))
+
+#Plot3 damage property by event type 
+plot3 <- ggplot(data=ecoc, aes(x=EVTYPE, y=(damagecrop/1000000000)))+
+  geom_line(colour="red")+
+  theme(axis.text.x = element_text(angle = 90, hjust = 1))
+
+```
+
+#Results
+1. The most harmful types of events for population health in the US are Tornadoes, as shown below. Red being fatalities, blue injuries.
+```{r}
+plot1
+```
+
+
+2. The events with the greatest economic consequences across the US are Floods (considering property) and Droughts considering (crops):
+```{r}
+plot2
+ecoc
+```
+
